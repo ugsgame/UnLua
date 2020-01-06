@@ -71,16 +71,29 @@ bool UUnLuaManager::Bind(UObjectBaseUtility *Object, UClass *Class, const TCHAR 
         return false;
     }
 
-    FString *ModuleNamePtr = ModuleNames.Find(Class);
-    if (!ModuleNamePtr)
-    {
-        UnLua::FLuaRetValues RetValues = UnLua::Call(L, "require", TCHAR_TO_ANSI(InModuleName));    // require Lua module
-        bSuccess = RetValues.IsValid();
-        if (bSuccess)
-        {
-            bSuccess = BindInternal(Object, Class, InModuleName, true);                             // bind!!!
-        }
-    }
+	FString *ModuleNamePtr = ModuleNames.Find(Class);
+	if (!ModuleNamePtr)
+	{
+		UnLua::FLuaRetValues RetValues = UnLua::Call(L, "require", TCHAR_TO_ANSI(InModuleName));    // require Lua module
+		bSuccess = RetValues.IsValid();
+
+		if (!bSuccess)
+		{
+			//load Code context
+			//TODO£ºCodeContext should be a param for the LoadContext
+			bool LoadString = false;
+#if WITH_EDITOR
+			LoadString = true;
+#endif
+			UnLua::FLuaRetValues LoadContextValues = UnLua::Call(L, "LoadContext", TCHAR_TO_ANSI(InModuleName),false/*true LoadString ,false Loadbuffer,default is true*/);
+			bSuccess = LoadContextValues.IsValid();
+		}
+
+		if (bSuccess)
+		{
+			bSuccess = BindInternal(Object, Class, InModuleName, true);                             // bind!!!
+		}
+	}
 
     if (bSuccess)
     {

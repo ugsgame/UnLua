@@ -12,6 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
 // See the License for the specific language governing permissions and limitations under the License.
 
+#include "UnLuaInterface.h"
 #include "UnLuaEx.h"
 #include "UnLuaPrivate.h"
 #include "UnLuaDelegates.h"
@@ -453,4 +454,6 @@ bool HotfixLua()
 }
 
 FString GLuaSrcRelativePath = TEXT("Script/");
-FString GLuaSrcFullPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir() + GLuaSrcRelativePath);
+FString GLuaSrcFullPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() + GLuaSrcRelativePath);
+
+FModuleContext GModuleContext;

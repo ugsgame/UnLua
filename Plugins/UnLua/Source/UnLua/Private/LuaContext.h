@@ -20,10 +20,10 @@
 #include "Runtime/Launch/Resources/Version.h"
 #include "UnLuaBase.h"
 
-class FLuaContext : public FUObjectArray::FUObjectCreateListener, public FUObjectArray::FUObjectDeleteListener
+class UNLUA_API FLuaContext : public FUObjectArray::FUObjectCreateListener, public FUObjectArray::FUObjectDeleteListener
 {
 public:
-    UNLUA_API static FLuaContext* Create();
+    static FLuaContext* Create();
 
     void RegisterDelegates();
 

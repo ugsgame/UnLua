@@ -2469,6 +2469,24 @@ namespace UnLua
         return Code == LUA_OK;
     }
 
+	UNLUA_API bool LoadString(lua_State *L, const char *String)
+	{
+		int32 Code = luaL_loadstring(L, String);
+		if (Code != LUA_OK)
+		{
+			UE_LOG(LogUnLua, Warning, TEXT("Failed to call luaL_loadstring, error code: %d"), Code);
+			ReportLuaCallError(L);                          // report pcall error
+		}
+
+		if(Code != LUA_OK)
+		{
+			lua_pushnil(L);     /* error (message is on top of the stack) */
+			lua_insert(L, -2);  /* put before error message */
+		}
+
+		return Code == LUA_OK;
+	}
+
     /**
      * Run a Lua chunk
      */

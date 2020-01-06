@@ -28,6 +28,8 @@
 #include "DefaultParamCollection.h"
 #include "Interfaces/IPluginManager.h"
 
+#include "UnLuaExtend.h"
+
 #if WITH_EDITOR
 #include "Editor.h"
 #endif
@@ -197,6 +199,12 @@ void FLuaContext::CreateState()
         {
             lua_register(L, "require", Global_Require);             // override 'require' when running with cooked data
         }
+
+		//UnLuaExtern Functions
+		lua_register(L, "CheckModule", Global_CheckModule);
+		lua_register(L, "RequireModule", Global_RequireModule);
+		lua_register(L, "LoadContext", Global_LoadContext);
+		//
 
         // register collision related enums
         RegisterECollisionChannel(L);
@@ -394,15 +402,24 @@ bool FLuaContext::TryToBindLua(UObjectBaseUtility *Object)
         }
         if (Class->ImplementsInterface(InterfaceClass))                             // static binding
         {
-            UFunction *Func = Class->FindFunctionByName(FName("GetModuleName"));    // find UFunction 'GetModuleName'. hard coded!!!
-            if (Func)
+            UFunction *GetNameFunc = Class->FindFunctionByName(FName("GetModuleName"));    // find UFunction 'GetModuleName'. hard coded!!!
+			UFunction *GetContextFunc = Class->FindFunctionByName(FName("GetModuleContext"));    // find UFunction 'GetModuleCode'. hard coded!!!
+
+            if (GetNameFunc && GetContextFunc)
             {
-                if (Func->GetNativeFunc() && IsInGameThread())
+                if (GetNameFunc->GetNativeFunc() && GetContextFunc->GetNativeFunc()  && IsInGameThread())
                 {
                     FString ModuleName;
-                    UObject *DefaultObject = Class->GetDefaultObject();             // get CDO
-                    DefaultObject->UObject::ProcessEvent(Func, &ModuleName);        // force to invoke UObject::ProcessEvent(...)
-                    UClass *OuterClass = Func->GetOuterUClass();                    // get UFunction's outer class
+					FModuleContext ModuleContext;
+
+                    UObject *DefaultObject = Class->GetDefaultObject();						// get CDO
+                    DefaultObject->UObject::ProcessEvent(GetNameFunc, &ModuleName);			// force to invoke UObject::ProcessEvent(...)
+					DefaultObject->UObject::ProcessEvent(GetContextFunc, &ModuleContext);
+
+					//Set Global Context
+					GModuleContext = ModuleContext;
+
+                    UClass *OuterClass = GetNameFunc->GetOuterUClass();                    // get UFunction's outer class
                     Class = OuterClass == InterfaceClass ? Class : OuterClass;      // select the target UClass to bind Lua module
                     if (ModuleName.Len() < 1)
                     {
@@ -611,21 +628,36 @@ void FLuaContext::OnAsyncLoadingFlushUpdate()
             if (Object && !Object->HasAnyFlags(RF_NeedPostLoad))
             {
                 // see FLuaContext::TryToBindLua
-                UFunction *Func = Object->FindFunction(FName("GetModuleName"));
-                if (!Func || !Func->GetNativeFunc())
+                UFunction *GetNameFunc = Object->FindFunction(FName("GetModuleName"));
+				UFunction *GetContextFunc = Object->FindFunction(FName("GetModuleContext"));
+
+                if (!GetNameFunc || !GetNameFunc->GetNativeFunc())
                 {
                     continue;
                 }
+				if (!GetContextFunc || !GetContextFunc->GetNativeFunc())
+				{
+					continue;
+				}
+
                 FString ModuleName;
-                Object->UObject::ProcessEvent(Func, &ModuleName);    // force to invoke UObject::ProcessEvent(...)
-                UClass *Class = Func->GetOuterUClass();
+				FModuleContext ModuleContext;
+
+                Object->UObject::ProcessEvent(GetNameFunc, &ModuleName);    // force to invoke UObject::ProcessEvent(...)
+				Object->UObject::ProcessEvent(GetContextFunc, &ModuleContext);    // force to invoke UObject::ProcessEvent(...)
+
+				//Set Global Context
+				GModuleContext = ModuleContext;
+
+                UClass *Class = GetNameFunc->GetOuterUClass();
                 Class = Class == InterfaceClass ? Object->GetClass() : Class;
                 if (ModuleName.Len() < 1)
                 {
                     ModuleName = Class->GetName();
                 }
-                Manager->Bind(Object, Class, *ModuleName);
-                Candidates.RemoveAt(i);
+
+				Candidates.RemoveAt(i);
+                Manager->Bind(Object, Class, *ModuleName);           
             }
         }
     }
