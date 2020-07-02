@@ -51,7 +51,7 @@ namespace UnLua
      */
     struct ITypeInterface : public ITypeOps
     {
-		virtual ~ITypeInterface() {}
+        virtual ~ITypeInterface() {}
 
         virtual bool IsPODType() const = 0;
         virtual bool IsTriviallyDestructible() const = 0;
@@ -230,12 +230,12 @@ namespace UnLua
     UNLUA_API bool LoadChunk(lua_State *L, const char *Chunk, int32 ChunkSize, const char *ChunkName = "", const char *Mode = "bt", int32 Env = 0);
 
 	/**
-	 * Load a Lua string without running it
+	* Load a Lua string without running it
 	 * *param String - Lua string
-	 */
+	*/
 	UNLUA_API bool LoadString(lua_State *L, const char *String);
 
-	/**
+    /**
      * Run a Lua chunk
      *
      * @param Chunk - Lua chunk

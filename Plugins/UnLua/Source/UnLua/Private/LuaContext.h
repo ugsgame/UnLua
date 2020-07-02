@@ -1,4 +1,4 @@
-// Tencent is pleased to support the open source community by making UnLua available.
+﻿// Tencent is pleased to support the open source community by making UnLua available.
 // 
 // Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
 //
@@ -20,7 +20,7 @@
 #include "Runtime/Launch/Resources/Version.h"
 #include "UnLuaBase.h"
 
-class UNLUA_API FLuaContext : public FUObjectArray::FUObjectCreateListener, public FUObjectArray::FUObjectDeleteListener
+class UNLUA_API  FLuaContext : public FUObjectArray::FUObjectCreateListener, public FUObjectArray::FUObjectDeleteListener
 {
 public:
     static FLuaContext* Create();
@@ -68,6 +68,8 @@ public:
     void PostPIEStarted(bool bIsSimulating);
     void PrePIEEnded(bool bIsSimulating);
     void EndPIE(bool bIsSimulating);
+
+    void OnEndPlayMap();
 
     const TMap<FName, UnLua::IExportedClass*>& GetExportedReflectedClasses() const { return ExportedReflectedClasses; }
     const TMap<FName, UnLua::IExportedClass*>& GetExportedNonReflectedClasses() const { return ExportedNonReflectedClasses; }

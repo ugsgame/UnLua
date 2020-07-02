@@ -16,6 +16,8 @@
 #include "UEReflectionUtils.h"
 #include "GameFramework/Actor.h"
 
+#define CLEAR_INTERNAL_NATIVE_FLAG_DURING_DUPLICATION 1
+
 /**
  * Custom thunk function to call Lua function
  */
@@ -36,7 +38,11 @@ DEFINE_FUNCTION(FLuaInvoker::execCallLua)
         }
         else
         {
-            Stack.SkipCode(1);      // skip EX_CallLua
+            if (Func->GetNativeFunc() == (FNativeFuncPtr)&FLuaInvoker::execCallLua)
+            {
+                check(*Stack.Code == EX_CallLua);
+                Stack.SkipCode(1);      // skip EX_CallLua only when called from native func
+            }
         }
     }
 
@@ -53,6 +59,14 @@ DEFINE_FUNCTION(FLuaInvoker::execCallLua)
     bool bRpcCall = false;
 #if SUPPORTS_RPC_CALL
     AActor *Actor = Cast<AActor>(Stack.Object);
+    if (!Actor)
+    {
+        UActorComponent *ActorComponent = Cast<UActorComponent>(Stack.Object);
+        if (ActorComponent)
+        {
+            Actor = ActorComponent->GetOwner();
+        }
+    }
     if (Actor)
     {
         ENetMode NetMode = Actor->GetNetMode();
@@ -141,7 +155,14 @@ UFunction* DuplicateUFunction(UFunction *TemplateFunction, UClass *OuterClass, F
     static int32 Offset = offsetof(FFakeProperty, Offset_Internal);
     static FArchive Ar;         // dummy archive used for UProperty::Link()
 
+#if CLEAR_INTERNAL_NATIVE_FLAG_DURING_DUPLICATION
+    FObjectDuplicationParameters DuplicationParams(TemplateFunction, OuterClass);
+    DuplicationParams.DestName = NewFuncName;
+    DuplicationParams.InternalFlagMask &= ~EInternalObjectFlags::Native;
+    UFunction *NewFunc = Cast<UFunction>(StaticDuplicateObjectEx(DuplicationParams));
+#else
     UFunction *NewFunc = DuplicateObject(TemplateFunction, OuterClass, NewFuncName);
+#endif
     NewFunc->PropertiesSize = TemplateFunction->PropertiesSize;
     NewFunc->MinAlignment = TemplateFunction->MinAlignment;
     int32 NumParams = NewFunc->NumParms;
@@ -170,6 +191,7 @@ UFunction* DuplicateUFunction(UFunction *TemplateFunction, UClass *OuterClass, F
     }
     OuterClass->AddFunctionToFunctionMap(NewFunc, NewFuncName);
     //GReflectionRegistry.RegisterFunction(NewFunc);
+    NewFunc->ClearInternalFlags(EInternalObjectFlags::Native);
     if (GUObjectArray.DisregardForGCEnabled() || GUObjectClusters.GetNumAllocatedClusters())
     {
         NewFunc->AddToRoot();
@@ -191,6 +213,7 @@ void RemoveUFunction(UFunction *Function, UClass *OuterClass)
     {
         Function->RemoveFromRoot();
     }
+#if !CLEAR_INTERNAL_NATIVE_FLAG_DURING_DUPLICATION
     if (Function->IsNative())
     {
         Function->ClearInternalFlags(EInternalObjectFlags::Native);
@@ -200,6 +223,7 @@ void RemoveUFunction(UFunction *Function, UClass *OuterClass)
             Property->ClearInternalFlags(EInternalObjectFlags::Native);
         }
     }
+#endif
 }
 
 /**
@@ -208,7 +232,11 @@ void RemoveUFunction(UFunction *Function, UClass *OuterClass)
  */
 void OverrideUFunction(UFunction *Function, FNativeFuncPtr NativeFunc, void *Userdata, bool bInsertOpcodes)
 {
-    Function->SetNativeFunc(NativeFunc);
+    if (!Function->HasAnyFunctionFlags(FUNC_Net) || Function->HasAnyFunctionFlags(FUNC_Native))
+    {
+        Function->SetNativeFunc(NativeFunc);
+    }
+
     if (Function->Script.Num() < 1)
     {
 #if UE_BUILD_SHIPPING || UE_BUILD_TEST

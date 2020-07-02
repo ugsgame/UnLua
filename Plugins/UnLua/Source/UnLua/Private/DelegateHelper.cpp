@@ -49,9 +49,9 @@ public:
     TArray<FName> FunctionNames;
 };
 
-void FSignatureDesc::MarkForDelete()
+void FSignatureDesc::MarkForDelete(bool bIgnoreBindings)
 {
-    if (NumBindings > 1)
+    if (!bIgnoreBindings && NumBindings > 1)
     {
         --NumBindings;              // dec bindings if there is more than one bindings.
         return;
@@ -151,6 +151,19 @@ bool FDelegateHelper::Bind(FScriptDelegate *ScriptDelegate, UDelegateProperty *P
         CreateSignature(Property->SignatureFunction, FuncName, Callback, CallbackRef);      // create the signature function for the callback
     }
     return true;
+}
+
+void FDelegateHelper::Unbind(const FCallbackDesc &Callback)
+{
+    UFunction **CallbackFuncPtr = Callbacks.Find(Callback);
+    if (CallbackFuncPtr && *CallbackFuncPtr)
+    {
+        FSignatureDesc **SignatureDesc = Signatures.Find(*CallbackFuncPtr);
+        if (SignatureDesc && *SignatureDesc)
+        {
+            (*SignatureDesc)->MarkForDelete(true);
+        }
+    }
 }
 
 void FDelegateHelper::Unbind(FScriptDelegate *ScriptDelegate)
@@ -494,13 +507,13 @@ void FDelegateHelper::CreateSignature(UFunction *TemplateFunction, FName FuncNam
     SignatureDesc->CallbackRef = CallbackRef;
     Signatures.Add(SignatureFunction, SignatureDesc);
 
-    OverrideUFunction(SignatureFunction, (FNativeFuncPtr)&FDelegateHelper::ProcessDelegate, SignatureDesc, false);      // set custom thunk function for the duplicated UFunction
+    // set custom thunk function for the duplicated UFunction
+    OverrideUFunction(SignatureFunction, (FNativeFuncPtr)&FDelegateHelper::ProcessDelegate, SignatureDesc, false);
 
-    uint8 NumOutProperties = SignatureDesc->SignatureFunctionDesc->GetNumOutProperties();
-    uint8 NumNonConstRefProperties = SignatureDesc->SignatureFunctionDesc->HasReturnProperty() ? NumOutProperties - 1 : NumOutProperties;
-    if (NumNonConstRefProperties > 0)
+    uint8 NumRefProperties = SignatureDesc->SignatureFunctionDesc->GetNumRefProperties();
+    if (NumRefProperties > 0)
     {
-        SignatureFunction->FunctionFlags |= FUNC_HasOutParms;        // 'FUNC_HasOutParms' will not be set for signature function even if it has non-const reference parameters
+        SignatureFunction->FunctionFlags |= FUNC_HasOutParms;        // 'FUNC_HasOutParms' will not be set for signature function even if it has out parameters
     }
 
     Callbacks.Add(Callback, SignatureFunction);

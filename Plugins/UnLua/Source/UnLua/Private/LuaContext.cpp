@@ -1,4 +1,4 @@
-// Tencent is pleased to support the open source community by making UnLua available.
+﻿// Tencent is pleased to support the open source community by making UnLua available.
 // 
 // Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
 //
@@ -32,6 +32,7 @@
 
 #if WITH_EDITOR
 #include "Editor.h"
+#include "GameDelegates.h"
 #endif
 
 #if UE_BUILD_TEST
@@ -124,6 +125,7 @@ void FLuaContext::RegisterDelegates()
     FEditorDelegates::PostPIEStarted.AddRaw(GLuaCxt, &FLuaContext::PostPIEStarted);
     FEditorDelegates::PrePIEEnded.AddRaw(GLuaCxt, &FLuaContext::PrePIEEnded);
     FEditorDelegates::EndPIE.AddRaw(GLuaCxt, &FLuaContext::EndPIE);
+    FGameDelegates::Get().GetEndPlayMapDelegate().AddRaw(GLuaCxt, &FLuaContext::OnEndPlayMap);
 #endif
 }
 
@@ -402,24 +404,24 @@ bool FLuaContext::TryToBindLua(UObjectBaseUtility *Object)
         }
         if (Class->ImplementsInterface(InterfaceClass))                             // static binding
         {
-            UFunction *GetNameFunc = Class->FindFunctionByName(FName("GetModuleName"));    // find UFunction 'GetModuleName'. hard coded!!!
+            UFunction *Func = Class->FindFunctionByName(FName("GetModuleName"));    // find UFunction 'GetModuleName'. hard coded!!!
 			UFunction *GetContextFunc = Class->FindFunctionByName(FName("GetModuleContext"));    // find UFunction 'GetModuleCode'. hard coded!!!
-
-            if (GetNameFunc && GetContextFunc)
+            if (Func && GetContextFunc)
             {
-                if (GetNameFunc->GetNativeFunc() && GetContextFunc->GetNativeFunc()  && IsInGameThread())
+                if (Func->GetNativeFunc() && GetContextFunc->GetNativeFunc() && IsInGameThread())
                 {
                     FString ModuleName;
 					FModuleContext ModuleContext;
 
-                    UObject *DefaultObject = Class->GetDefaultObject();						// get CDO
-                    DefaultObject->UObject::ProcessEvent(GetNameFunc, &ModuleName);			// force to invoke UObject::ProcessEvent(...)
+                    UObject *DefaultObject = Class->GetDefaultObject();             // get CDO
+
+                    DefaultObject->UObject::ProcessEvent(Func, &ModuleName);        // force to invoke UObject::ProcessEvent(...)
 					DefaultObject->UObject::ProcessEvent(GetContextFunc, &ModuleContext);
 
 					//Set Global Context
 					GModuleContext = ModuleContext;
 
-                    UClass *OuterClass = GetNameFunc->GetOuterUClass();                    // get UFunction's outer class
+                    UClass *OuterClass = Func->GetOuterUClass();                    // get UFunction's outer class
                     Class = OuterClass == InterfaceClass ? Class : OuterClass;      // select the target UClass to bind Lua module
                     if (ModuleName.Len() < 1)
                     {
@@ -628,10 +630,10 @@ void FLuaContext::OnAsyncLoadingFlushUpdate()
             if (Object && !Object->HasAnyFlags(RF_NeedPostLoad))
             {
                 // see FLuaContext::TryToBindLua
-                UFunction *GetNameFunc = Object->FindFunction(FName("GetModuleName"));
+                UFunction *Func = Object->FindFunction(FName("GetModuleName"));
 				UFunction *GetContextFunc = Object->FindFunction(FName("GetModuleContext"));
 
-                if (!GetNameFunc || !GetNameFunc->GetNativeFunc())
+                if (!Func || !Func->GetNativeFunc())
                 {
                     continue;
                 }
@@ -643,21 +645,20 @@ void FLuaContext::OnAsyncLoadingFlushUpdate()
                 FString ModuleName;
 				FModuleContext ModuleContext;
 
-                Object->UObject::ProcessEvent(GetNameFunc, &ModuleName);    // force to invoke UObject::ProcessEvent(...)
+                Object->UObject::ProcessEvent(Func, &ModuleName);    // force to invoke UObject::ProcessEvent(...)
 				Object->UObject::ProcessEvent(GetContextFunc, &ModuleContext);    // force to invoke UObject::ProcessEvent(...)
 
 				//Set Global Context
 				GModuleContext = ModuleContext;
 
-                UClass *Class = GetNameFunc->GetOuterUClass();
+				UClass *Class = Func->GetOuterUClass();
                 Class = Class == InterfaceClass ? Object->GetClass() : Class;
                 if (ModuleName.Len() < 1)
                 {
                     ModuleName = Class->GetName();
                 }
-
 				Candidates.RemoveAt(i);
-                Manager->Bind(Object, Class, *ModuleName);           
+                Manager->Bind(Object, Class, *ModuleName);
             }
         }
     }
@@ -810,13 +811,7 @@ void FLuaContext::PostPIEStarted(bool bIsSimulating)
  */
 void FLuaContext::PrePIEEnded(bool bIsSimulating)
 {
-    bIsPIE = false;
-    Cleanup(true);
-    Manager->CleanupDefaultInputs();
-    ServerWorld = nullptr;
-    LoadedWorlds.Empty();
-    CandidateInputComponents.Empty();
-    FWorldDelegates::OnWorldTickStart.Remove(OnWorldTickStartHandle);
+    //bIsPIE = false;
 }
 
 /**
@@ -824,6 +819,20 @@ void FLuaContext::PrePIEEnded(bool bIsSimulating)
  */
 void FLuaContext::EndPIE(bool bIsSimulating)
 {
+}
+
+/**
+ * Callback for FGameDelegates::EndPlayMapDelegate
+ */
+void FLuaContext::OnEndPlayMap()
+{
+    bIsPIE = false;
+    Cleanup(true);
+    Manager->CleanupDefaultInputs();
+    ServerWorld = nullptr;
+    LoadedWorlds.Empty();
+    CandidateInputComponents.Empty();
+    FWorldDelegates::OnWorldTickStart.Remove(OnWorldTickStartHandle);
 }
 #endif
 
@@ -919,8 +928,8 @@ void FLuaContext::NotifyUObjectDeleted(const UObjectBase *InObject, int32 Index)
         return;
     }
 
-    bool bUClass = GReflectionRegistry.NotifyUObjectDeleted(InObject);
-    Manager->NotifyUObjectDeleted(InObject, bUClass);
+    bool bClass = GReflectionRegistry.NotifyUObjectDeleted(InObject);
+    Manager->NotifyUObjectDeleted(InObject, bClass);
 
     if (CandidateInputComponents.Num() > 0)
     {
@@ -1031,7 +1040,7 @@ void FLuaContext::Initialize()
  */
 void FLuaContext::Cleanup(bool bFullCleanup, UWorld *World)
 {
-    if (!bEnable || !bInitialized || !Manager)
+    if (!bEnable || !Manager)
     {
         return;
     }

@@ -1,4 +1,4 @@
-// Tencent is pleased to support the open source community by making UnLua available.
+﻿// Tencent is pleased to support the open source community by making UnLua available.
 // 
 // Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
 //
@@ -750,7 +750,7 @@ void PushStructArray(lua_State *L, UProperty *Property, void *Value, const char 
 /**
  * Create a Lua instance (table) for a UObject
  */
-int32 NewLuaObject(lua_State *L, UObjectBaseUtility *Object, const char *ModuleName)
+int32 NewLuaObject(lua_State *L, UObjectBaseUtility *Object, UClass *Class, const char *ModuleName)
 {
     check(Object);
 
@@ -762,7 +762,16 @@ int32 NewLuaObject(lua_State *L, UObjectBaseUtility *Object, const char *ModuleN
     lua_pushvalue(L, -2);
     lua_rawset(L, -4);                                          // INSTANCET.Object = RAW_UOBJECT
     int32 Type = GetLoadedModule(L, ModuleName);                // push the required module/table ('REQUIRED_MODULE') to the top of the stack
-    lua_getmetatable(L, -2);                                    // get the metatable ('METATABLE_UOBJECT') of 'RAW_UOBJECT' 
+    if (Class)
+    {
+        TStringConversion<TStringConvert<TCHAR, ANSICHAR>> ClassName(*FString::Printf(TEXT("%s%s"), Class->GetPrefixCPP(), *Class->GetName()));
+        Type = luaL_getmetatable(L, ClassName.Get());
+        check(Type == LUA_TTABLE);
+    }
+    else
+    {
+        lua_getmetatable(L, -2);                                // get the metatable ('METATABLE_UOBJECT') of 'RAW_UOBJECT' 
+    }
 #if ENABLE_CALL_OVERRIDDEN_FUNCTION
     lua_pushstring(L, "Overridden");
     lua_pushvalue(L, -2);
@@ -2224,7 +2233,7 @@ int32 ScriptStruct_Delete(lua_State *L)
     {
         if (!bTwoLvlPtr)
         {
-            ScriptStruct->DestroyStruct((uint8*)Userdata + ClassDesc->GetUserdataPadding());
+            ScriptStruct->DestroyStruct(Userdata);
         }
     }
     else
@@ -2478,7 +2487,7 @@ namespace UnLua
 			ReportLuaCallError(L);                          // report pcall error
 		}
 
-		if(Code != LUA_OK)
+		if (Code != LUA_OK)
 		{
 			lua_pushnil(L);     /* error (message is on top of the stack) */
 			lua_insert(L, -2);  /* put before error message */
@@ -2486,6 +2495,7 @@ namespace UnLua
 
 		return Code == LUA_OK;
 	}
+
 
     /**
      * Run a Lua chunk
@@ -2815,7 +2825,7 @@ namespace UnLua
                     uint8 *SrcData = SrcMap.GetData(SrcIndex);
                     uint8 *DestData = DestMap->GetData(DestIndex);
                     KeyInterface->Copy(DestData, SrcData);
-                    ValueInterface->Copy(DestData, SrcData);
+                    ValueInterface->Copy(DestData + DestMap->MapLayout.ValueOffset, SrcData + SrcMap.MapLayout.ValueOffset);
                     --Num;
                 }
             }
